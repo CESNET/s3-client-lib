@@ -60,8 +60,7 @@ class S3MultipartClient(S3Client):
         return self.signed_s3_multipart_upload(bucket, object_name,)
 
 
-
-    def signed_s3_multipart_upload(self, bucket, object_name, size, pk, checksum_update, origin, finish_url) -> dict:
+    def signed_s3_multipart_upload(self, bucket, object_name, size, checksum_update, origin, finish_url) -> dict:
         self.create_bucket_if_not_exists(bucket)
         upload_id = self.create_multipart_upload(bucket, object_name)
         max_parts, chunk_size = get_file_chunk_size(size)
@@ -96,7 +95,7 @@ class S3MultipartClient(S3Client):
         :param: UploadId == UUID
         """
         try:
-            self.client.complete_multipart_upload(Bucket=bucket,
+            return self.client.complete_multipart_upload(Bucket=bucket,
                                                      Key=object_name,
                                                      MultipartUpload={'Parts': parts},
                                                      UploadId=upload_id)
@@ -147,3 +146,13 @@ class S3MultipartClient(S3Client):
         self.finish_file_metadata(bucket, object_name, filename)
 
         return "Upload completed"
+
+    def abort_multipart_upload(self, bucket, object_name, upload_id):
+        """
+        This method will prepare S3 for multipart upload
+        :param bucket: path to local file
+        :param object_name: how should be object named in S3
+        :param upload_id: UploadId == UUID
+        :return: UploadId == UUID
+        """
+        return self.client.abort_multipart_upload(Bucket=bucket, Key=object_name, UploadId=upload_id)
