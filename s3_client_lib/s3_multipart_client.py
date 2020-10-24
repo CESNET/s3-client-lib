@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class S3MultipartClient(S3Client):
-    def __init__(self, address, access_key, secret_access_key):
-        super(S3MultipartClient, self).__init__(address, access_key, secret_access_key)
+    def __init__(self, address, access_key, secret_access_key, tenant=None):
+        super(S3MultipartClient, self).__init__(address, access_key, secret_access_key, tenant)
 
     def upload_local_file(self, local_file, bucket, object_name):
         """
@@ -57,17 +57,15 @@ class S3MultipartClient(S3Client):
             "url": string
         }
         """
-        return self.signed_s3_multipart_upload(bucket, object_name,)
+        return self.signed_s3_multipart_upload(bucket, object_name)
 
 
     def signed_s3_multipart_upload(self, bucket, object_name, size, checksum_update,
-                                   origin, finish_url, tenant=None) -> dict:
+                                   origin, finish_url) -> dict:
         self.create_bucket_if_not_exists(bucket)
         upload_id = self.create_multipart_upload(bucket, object_name)
         max_parts, chunk_size = get_file_chunk_size(size)
         logger.debug(f"max parts {max_parts}, chunk size: {chunk_size}")
-        if tenant:
-            bucket = f"{tenant}:{bucket}"
         parts = self.create_presigned_urls_for_multipart_upload(bucket, object_name, upload_id, max_parts)
         return {"parts_url": parts,
                 "chunk_size": chunk_size,
