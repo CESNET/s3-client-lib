@@ -19,34 +19,17 @@ class S3Client:
                                    endpoint_url=address,
                                    aws_access_key_id=access_key,
                                    aws_secret_access_key=secret_access_key)
-        def extend_bucket_with_tenant(params, **kwargs):
-            logger.info(f"BEFORE `{params}`")
+
+        def extend_bucket_with_tenant(request, signing_name, region_name,
+                                      signature_version, request_signer, operation_name, **kwargs):
             if tenant:
-                bucket = None
-                match = re.match(r"\/(.+?)\/.*", params.get("url_path", ""))
-                if match is not None:
-                    bucket = match.group(1)
-                else:
-                    match = re.match(r"(https|http):\/\/.+?\/(.*?)\/.*", params.get("url", ""))
-                    if match is not None:
-                        bucket = match.group(1)
-                    else:
-                        # no bucket!!
-                        logger.error(f"Cannot find bucket in url `{params}`, {kwargs}")
-                        return
+                bucket = request.context['signing'].get('bucket', None)
                 logger.info(f" {tenant} => {bucket}")
-                if "url_path" in params:
-                    # \/(.+?)\/.*
-                    params["url_path"] = params["url_path"].replace(tenant, f"{tenant}%3A{bucket}")
-                if "url" in params:
-                    # (https|http):\/\/.+?\/(.*?)\/.*
-                    params["url"] = params["url"].replace(tenant, f"{tenant}%3A{bucket}")
-                ## todo: sanity check
-                params["context"]["signing"]["bucket"] = params["context"]["signing"]["bucket"].replace(tenant, f"{tenant}:{bucket}")
-                logger.info(f"AFTER `{params}`, {kwargs}")
+                if request.url:
+                    request.url = request.url.replace(bucket, f"{tenant}%3A{bucket}", 1)
             else:
                 logger.info("TENANT IS NOT DEFINED => do nothing")
-        self.client.meta.events.register('before-call.s3.CreateMultipartUpload', extend_bucket_with_tenant)
+        self.client.meta.events.register('before-sign.s3.UploadPart', extend_bucket_with_tenant)
         self.resource = boto3.resource('s3',
                                        endpoint_url=address,
                                        aws_access_key_id=access_key,
