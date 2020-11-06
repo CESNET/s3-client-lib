@@ -26,7 +26,7 @@ def read_in_chunks(file_object, chunk_size=CHUNK_SIZE_16M):
 def get_file_chunk_size(file_size):
     def getnumchunks(file_size, max_size):
         num = int(file_size / max_size)
-        if num % max_size:
+        if file_size % max_size:
             num += 1
         return num
     if file_size < MB_512:
