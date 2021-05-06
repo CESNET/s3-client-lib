@@ -78,7 +78,7 @@ class S3MultipartClient(S3Client):
         max_parts, chunk_size = get_file_chunk_size(size)
         logger.debug(f'max parts {max_parts}, chunk size: {chunk_size}')
         parts = self.create_presigned_urls_for_multipart_upload(
-            bucket, object_name, upload_id, max_parts
+            bucket, object_name, upload_id, max_parts, expires
         )
         return {
             'parts_url': parts,
@@ -122,7 +122,7 @@ class S3MultipartClient(S3Client):
             logger.error(f'finish exc {e}')
 
     def create_presigned_urls_for_multipart_upload(
-        self, bucket, object_name, upload_id, max_part
+        self, bucket, object_name, upload_id, max_part, expires=3600
     ):
         """
         Create for each part presigned url, so upload can be done in parallel.
@@ -135,13 +135,13 @@ class S3MultipartClient(S3Client):
         logger.debug(f'{object_name} - {upload_id} - {max_part}')
         return [
             create_presigned_upload_part(
-                self.client, bucket, object_name, upload_id, num
+                self.client, bucket, object_name, upload_id, num, expires
             )
             for num in range(1, max_part + 1)
         ]
 
     def upload_local_file_multipart(
-        self, local_file, bucket, object_name, chunk_size=MB_512, num_chunks=1
+        self, local_file, bucket, object_name, chunk_size=MB_512, num_chunks=1, expires=3600
     ):
         """
         Upload file to s3 with multipart upload this method is for large files
@@ -152,7 +152,7 @@ class S3MultipartClient(S3Client):
         """
         upload_id = self.create_multipart_upload(bucket, object_name)
         presigned_urls = self.create_presigned_urls_for_multipart_upload(
-            bucket, object_name, upload_id, num_chunks
+            bucket, object_name, upload_id, num_chunks, expires
         )
         parts = []
         filename = os.path.basename(local_file)

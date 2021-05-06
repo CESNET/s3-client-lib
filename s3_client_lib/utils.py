@@ -39,16 +39,17 @@ def get_file_chunk_size(file_size):
         return getnumchunks(file_size, MB_512), MB_512
 
 
-def create_presigned_upload_part(client, bucket, key, upload_id, part_no):
+def create_presigned_upload_part(client, bucket, key, upload_id, part_no, expires):
     return client.generate_presigned_url(ClientMethod='upload_part',
                                          Params={'Bucket': bucket,
                                                  'Key': key,
                                                  'UploadId': upload_id,
-                                                 'PartNumber': part_no})
+                                                 'PartNumber': part_no,
+                                                 'ExpiresIn': expires})
 
 
-def upload_part_(client, bucket, key, upload_id, part_no, part):
-    signed_url = create_presigned_upload_part(client, bucket, key, upload_id, part_no)
+def upload_part_(client, bucket, key, upload_id, part_no, part, expires):
+    signed_url = create_presigned_upload_part(client, bucket, key, upload_id, part_no, expires)
     logger.info(f"Uploading part [{part_no}]...")
     logger.debug(f"[{part_no}] Presigned url {signed_url}")
     res = requests.put(signed_url, data=part)
