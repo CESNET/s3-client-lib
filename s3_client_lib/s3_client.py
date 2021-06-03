@@ -6,42 +6,70 @@ import requests
 import time
 import concurrent.futures
 from s3_client_lib.utils import *
+from botocore.client import Config
 
 logger = logging.getLogger(__name__)
 import re
 
 
 class S3Client:
-
-    def __init__(self, address, access_key, secret_access_key, tenant=None):
+    def __init__(
+        self,
+        address,
+        access_key,
+        secret_access_key,
+        tenant=None,
+        signature_version='s3v4',
+    ):
         self.address = address
-        self.client = boto3.client('s3',
-                                   endpoint_url=address,
-                                   aws_access_key_id=access_key,
-                                   aws_secret_access_key=secret_access_key)
+        config = Config(signature_version=signature_version)
+        self.client = boto3.client(
+            's3',
+            endpoint_url=address,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_access_key,
+            config=config,
+        )
 
-        def extend_bucket_with_tenant(request, signing_name, region_name,
-                                      signature_version, request_signer, operation_name, **kwargs):
+        def extend_bucket_with_tenant(
+            request,
+            signing_name,
+            region_name,
+            signature_version,
+            request_signer,
+            operation_name,
+            **kwargs,
+        ):
             if tenant:
                 bucket = request.context['signing'].get('bucket', None)
-                logger.info(f" {tenant} => {bucket}")
+                logger.info(f' {tenant} => {bucket}')
                 if request.url:
-                    request.url = request.url.replace(bucket, f"{tenant}%3A{bucket}", 1)
+                    request.url = request.url.replace(bucket, f'{tenant}%3A{bucket}', 1)
             else:
-                logger.info("TENANT IS NOT DEFINED => do nothing")
-        self.client.meta.events.register('before-sign.s3.UploadPart', extend_bucket_with_tenant)
-        self.resource = boto3.resource('s3',
-                                       endpoint_url=address,
-                                       aws_access_key_id=access_key,
-                                       aws_secret_access_key=secret_access_key)
+                logger.info('TENANT IS NOT DEFINED => do nothing')
+
+        self.client.meta.events.register(
+            'before-sign.s3.UploadPart', extend_bucket_with_tenant
+        )
+        self.resource = boto3.resource(
+            's3',
+            endpoint_url=address,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_access_key,
+        )
 
     def finish_file_metadata(self, bucket, object_name, filename):
         s3_object = self.get_object_head(bucket, object_name)
-        logger.debug(f"Fetched metadata header {s3_object}")
-        self.update_metadata_object(bucket, object_name,
-                                    {'contentLength': str(s3_object["ContentLength"]),
-                                     'contentType': s3_object['ContentType'],
-                                     'contentName': filename})
+        logger.debug(f'Fetched metadata header {s3_object}')
+        self.update_metadata_object(
+            bucket,
+            object_name,
+            {
+                'contentLength': str(s3_object['ContentLength']),
+                'contentType': s3_object['ContentType'],
+                'contentName': filename,
+            },
+        )
 
     def create_bucket_if_not_exists(self, bucket_name, **kwargs):
         """
@@ -65,9 +93,9 @@ class S3Client:
         bucket = self.resource.Bucket(bucket_name)
 
         if bucket.creation_date:
-            logger.info(f"The bucket exists {bucket_name}")
+            logger.info(f'The bucket exists {bucket_name}')
         else:
-            logger.info(f"The bucket does not exist {bucket_name}")
+            logger.info(f'The bucket does not exist {bucket_name}')
             return self.client.create_bucket(Bucket=bucket_name, **kwargs)
 
     def upload_local_file(self, local_file, bucket, object_name):
@@ -81,19 +109,23 @@ class S3Client:
         # file is greater then 512 mb we have to upload it with multipart
         file_size = os.path.getsize(os.path.abspath(local_file))
         if file_size > GB_1:
-            raise Exception("File size is greater than 1GB use S3MultipartClient")
+            raise Exception('File size is greater than 1GB use S3MultipartClient')
         response_api = self.sign_s3_upload(bucket, object_name)
-        s3_request_data = response_api["data"]["fields"]
-        url = response_api["data"]["url"]
+        s3_request_data = response_api['data']['fields']
+        url = response_api['data']['url']
         filename = os.path.basename(local_file)
-        with open(local_file, "rb") as rf:
-            logger.debug(f"Presigned upload => url: {url} fields: {s3_request_data}")
-            s3_response = requests.post(url, data=s3_request_data, files={"file": (filename, rf)})
-            logger.debug(f"Response {s3_response} {s3_response.text}")
+        with open(local_file, 'rb') as rf:
+            logger.debug(f'Presigned upload => url: {url} fields: {s3_request_data}')
+            s3_response = requests.post(
+                url, data=s3_request_data, files={'file': (filename, rf)}
+            )
+            logger.debug(f'Response {s3_response} {s3_response.text}')
             self.finish_file_metadata(bucket, object_name, filename)
-            return "Upload completed"
+            return 'Upload completed'
 
-    def sign_s3_upload(self, bucket, object_name, fields=None, conditions=None, expires=3600) -> dict:
+    def sign_s3_upload(
+        self, bucket, object_name, fields=None, conditions=None, expires=3600
+    ) -> dict:
         """
         Create presigned url for upload of object to S3. This method is for smaller files.
 
@@ -119,19 +151,16 @@ class S3Client:
             "url": string
         }
         """
-        #object_name += "-${filename}"
+        # object_name += "-${filename}"
         presigned_post = self.client.generate_presigned_post(
             Bucket=bucket,
             Key=object_name,
             Fields=fields,
             Conditions=conditions,
-            ExpiresIn=expires
+            ExpiresIn=expires,
         )
         url = os.path.join(os.path.join(self.address, bucket), object_name)
-        return {
-            'data': presigned_post,
-            'url': f'{url}'
-        }
+        return {'data': presigned_post, 'url': f'{url}'}
 
     def sign_s3_download(self, bucket, object_name, filename, expires=3600) -> dict:
         """
@@ -146,23 +175,23 @@ class S3Client:
         }
         """
 
-        logger.debug(f"Signing url for {object_name} in bucket {bucket}")
-        logger.info(f"Signing url for {object_name} in bucket {bucket}")
+        logger.debug(f'Signing url for {object_name} in bucket {bucket}')
+        logger.info(f'Signing url for {object_name} in bucket {bucket}')
 
         presigned_url = self.client.generate_presigned_url(
             'get_object',
             Params={
                 'Bucket': bucket,
                 'Key': object_name,
-                'ResponseContentDisposition': f'attachment; attachment; filename={filename}'
+                'ResponseContentDisposition': f'attachment; attachment; filename={filename}',
             },
-            ExpiresIn=expires
+            ExpiresIn=expires,
         )
-        return {
-            'url': presigned_url
-        }
+        return {'url': presigned_url}
 
-    def copy_from_s3(self, bucket, object_name, destination_path, chunk_size=CHUNK_SIZE_16M):
+    def copy_from_s3(
+        self, bucket, object_name, destination_path, chunk_size=CHUNK_SIZE_16M
+    ):
         """
         Function will copy data from s3 to destination_path. For download is used get_object function which is dict which
         contains in Body key StreamingBody -> loading by chunks.
@@ -173,27 +202,30 @@ class S3Client:
         :return:
         """
 
-        logger.info(f"Copy data from S3 for: {object_name} from bucket: {bucket} to path: {destination_path}")
+        logger.info(
+            f'Copy data from S3 for: {object_name} from bucket: {bucket} to path: {destination_path}'
+        )
         response = self.client.get_object(Bucket=bucket, Key=object_name)
 
         digest = hashlib.sha256()
         try:
             with open(destination_path, 'wb') as wf:
-                for chunk in response["Body"].iter_chunks(chunk_size):
+                for chunk in response['Body'].iter_chunks(chunk_size):
                     if chunk is None or not any(chunk):
                         break
                     digest.update(chunk)
                     wf.write(chunk)
             checksum_result = digest.hexdigest()
-            logger.info(f"Checksum result: {checksum_result}")
+            logger.info(f'Checksum result: {checksum_result}')
             return checksum_result
         except Exception as e:
-            logger.error(f"Something goes wrong in copy from S3 response: {response}, "
-                         f"destination = {destination_path}, "
-                         f"object_name: {object_name}"
-                         f"bucket: {bucket}"
-                         f"error: {e}"
-                         )
+            logger.error(
+                f'Something goes wrong in copy from S3 response: {response}, '
+                f'destination = {destination_path}, '
+                f'object_name: {object_name}'
+                f'bucket: {bucket}'
+                f'error: {e}'
+            )
 
     def copy_to_s3(self, bucket, from_path, object_name, extra_args=None):
         """
@@ -204,11 +236,15 @@ class S3Client:
         :return:
         """
 
-        logger.info(f"Copy data to S3 for: {object_name} to bucket: {bucket} from path: {from_path}")
+        logger.info(
+            f'Copy data to S3 for: {object_name} to bucket: {bucket} from path: {from_path}'
+        )
         bucket = self.resource.Bucket(bucket)
         return bucket.upload_file(from_path, object_name, ExtraArgs=extra_args)
 
-    def copy_from_bucket_to_bucket(self, object_name, source_bucket, destination_bucket):
+    def copy_from_bucket_to_bucket(
+        self, object_name, source_bucket, destination_bucket
+    ):
         """
         Copy objects from one bucket to another
         :param object_name: The name of the object to copy
@@ -216,12 +252,11 @@ class S3Client:
         :param destination_bucket:
         :return:
         """
-        copy_source = {
-            'Bucket': source_bucket,
-            'Key': object_name
-        }
-        logger.info(f"Copy data between buckets S3 for: {object_name} source bucket: {source_bucket} "
-                    f"destination bucket: {destination_bucket}")
+        copy_source = {'Bucket': source_bucket, 'Key': object_name}
+        logger.info(
+            f'Copy data between buckets S3 for: {object_name} source bucket: {source_bucket} '
+            f'destination bucket: {destination_bucket}'
+        )
         to_bucket = self.resource.Bucket(destination_bucket)
         return to_bucket.copy(copy_source, object_name)
 
@@ -236,7 +271,7 @@ class S3Client:
             for page in response_iterator:
                 logger.debug(page)
                 result.append(page)
-            if page is None:
+            if page is None or page['Marker'] == '':
                 return page, result
             if size is not None:
                 if len(result) > size:
@@ -249,7 +284,9 @@ class S3Client:
             if previous == marker and len(previous) > 0 and len(marker) > 0:
                 break
 
-    def list_objects(self, bucket=None, prefix=None, max_items=100, start_from=None, size=100):
+    def list_objects(
+        self, bucket=None, prefix=None, max_items=100, start_from=None, size=100
+    ):
         """
         List objects from bucket
 
@@ -265,12 +302,9 @@ class S3Client:
         marker = start_from
         paginator = self.client.get_paginator('list_objects')
 
-
         def iterate(bucket, mark):
             config.update({'StartingToken': mark})
-            return paginator.paginate(
-                Bucket=bucket,
-                PaginationConfig=config)
+            return paginator.paginate(Bucket=bucket, PaginationConfig=config)
 
         return self.__paginate(bucket, marker, size, iterate)
 
@@ -285,14 +319,11 @@ class S3Client:
         """
         config = {'PageSize': max_items}
         marker = start_from
-        paginator = self.client.get_paginator("list_objects")
-
+        paginator = self.client.get_paginator('list_objects')
 
         def iterate(bucket, mark):
             config.update({'StartingToken': mark})
-            page_iterator = paginator.paginate(
-                Bucket=bucket,
-                PaginationConfig=config)
+            page_iterator = paginator.paginate(Bucket=bucket, PaginationConfig=config)
             return page_iterator.search(query)
 
         return self.__paginate(bucket, marker, size, iterate)
@@ -311,12 +342,16 @@ class S3Client:
         return response
 
     def update_metadata_object(self, bucket, object_name, metadata):
-        logger.debug(f"Update metadata on object {object_name} in bucket: {bucket} With metdata: {metadata}")
+        logger.debug(
+            f'Update metadata on object {object_name} in bucket: {bucket} With metdata: {metadata}'
+        )
         s3_object = self.resource.Object(bucket, object_name)
         s3_object.metadata.update(metadata)
-        result = s3_object.copy_from(CopySource={'Bucket': bucket, 'Key': object_name},
-                                     Metadata=s3_object.metadata,
-                                     MetadataDirective='REPLACE')
+        result = s3_object.copy_from(
+            CopySource={'Bucket': bucket, 'Key': object_name},
+            Metadata=s3_object.metadata,
+            MetadataDirective='REPLACE',
+        )
         return result
 
     def get_object_head(self, bucket, object_name):
