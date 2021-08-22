@@ -44,8 +44,8 @@ def create_presigned_upload_part(client, bucket, key, upload_id, part_no, expire
                                          Params={'Bucket': bucket,
                                                  'Key': key,
                                                  'UploadId': upload_id,
-                                                 'PartNumber': part_no,
-                                                 'ExpiresIn': expires})
+                                                 'PartNumber': part_no},
+                                                 ExpiresIn=expires)
 
 
 def upload_part_(client, bucket, key, upload_id, part_no, part, expires):
