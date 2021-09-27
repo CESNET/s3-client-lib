@@ -7,7 +7,6 @@ authors = ["Radim Spigel <spigel@cesnet.cz>"]
 [tool.poetry.dependencies]
 python = "^3.6"
 boto3 = "^1.14.18"
-requests = "2.25.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^3.0"
