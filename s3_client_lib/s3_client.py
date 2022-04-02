@@ -3,8 +3,6 @@ import logging
 import hashlib
 import os
 import requests
-import time
-import concurrent.futures
 from s3_client_lib.utils import *
 from botocore.client import Config
 
@@ -271,14 +269,14 @@ class S3Client:
             for page in response_iterator:
                 logger.debug(page)
                 result.append(page)
-            if page is None or page['Marker'] == '':
+            if page is None or page.get('Marker') == '':
                 return page, result
             if size is not None:
                 if len(result) > size:
-                    return page['Marker'], result
+                    return page.get('Marker', ''), result
             try:
                 previous = marker
-                marker = page['Marker']
+                marker = page.get('Marker', '')
             except KeyError:
                 break
             if previous == marker and len(previous) > 0 and len(marker) > 0:
@@ -372,3 +370,10 @@ class S3Client:
         """
         response = self.client.get_object(Bucket=bucket, Key=object_name)
         return response
+
+    def get_stream(self, bucket_name, object_name):
+        logger.info(
+            f'{self.name}-> Getting stream data from S3 for: {object_name} from bucket: {bucket_name}'
+        )
+        response = self.s3_resource.Object(bucket_name=bucket_name, key=object_name)
+        return S3File(response)

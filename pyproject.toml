@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "s3-client-lib"
-version = "0.1.9"
+version = "0.1.9-1"
 description = "S3 client lib"
 authors = ["Radim Spigel <spigel@cesnet.cz>"]
 readme = "README.md"
