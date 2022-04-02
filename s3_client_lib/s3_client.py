@@ -373,7 +373,54 @@ class S3Client:
 
     def get_stream(self, bucket_name, object_name):
         logger.info(
-            f'{self.name}-> Getting stream data from S3 for: {object_name} from bucket: {bucket_name}'
+            f'Getting stream data from S3 for: {object_name} from bucket: {bucket_name}'
         )
-        response = self.s3_resource.Object(bucket_name=bucket_name, key=object_name)
+        response = self.resource.Object(bucket_name=bucket_name, key=object_name)
         return S3File(response)
+
+    def copy_data_from_s3_by_chunks_with_calc_sha(
+        self,
+        bucket,
+        object_name,
+        destination_path,
+        chunk_size=CHUNK_SIZE_128M,
+        process_chunk=lambda y, x: (y, x),
+    ):
+        """
+        Function will copy data from s3 to destination_path. For download is used get_object function which is dict which
+        contains in Body key StreamingBody -> loading by chunks.
+
+        :param object_name:
+        :param destination_path:
+        :param bucket:
+        :param chunk_size:
+        :return:
+        """
+        import hashlib
+        logger.info(
+            f'Copy data from S3 for: {object_name} from bucket: {bucket} to path: {destination_path}'
+        )
+        response = self.s3_client.get_object(Bucket=bucket, Key=object_name)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with open(destination_path, 'wb') as wf:
+                for idx, chunk in enumerate(response['Body'].iter_chunks(chunk_size)):
+                    if chunk is None or not any(chunk):
+                        break
+                    size += len(chunk)
+                    digest.update(chunk)
+                    process_chunk(idx, chunk)
+                    wf.write(chunk)
+
+            checksum_result = digest.hexdigest()
+            logger.info(f'Checksum result: {checksum_result}')
+            return checksum_result
+        except Exception as e:
+            print(e)
+            logger.error(
+                f'{self.name}-> Something goes wrong in copy from S3 response: {response}, '
+                f'destination = {destination_path}, '
+                f'object_name: {object_name}'
+                f'bucket: {bucket}'
+            )
