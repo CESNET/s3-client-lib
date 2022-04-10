@@ -3,8 +3,6 @@ import logging
 import hashlib
 import os
 import requests
-import time
-import concurrent.futures
 from s3_client_lib.utils import *
 from botocore.client import Config
 
@@ -271,14 +269,14 @@ class S3Client:
             for page in response_iterator:
                 logger.debug(page)
                 result.append(page)
-            if page is None or page['Marker'] == '':
+            if page is None or page.get('Marker') == '':
                 return page, result
             if size is not None:
                 if len(result) > size:
-                    return page['Marker'], result
+                    return page.get('Marker', ''), result
             try:
                 previous = marker
-                marker = page['Marker']
+                marker = page.get('Marker', '')
             except KeyError:
                 break
             if previous == marker and len(previous) > 0 and len(marker) > 0:
@@ -372,3 +370,57 @@ class S3Client:
         """
         response = self.client.get_object(Bucket=bucket, Key=object_name)
         return response
+
+    def get_stream(self, bucket_name, object_name):
+        logger.info(
+            f'Getting stream data from S3 for: {object_name} from bucket: {bucket_name}'
+        )
+        response = self.resource.Object(bucket_name=bucket_name, key=object_name)
+        return S3File(response)
+
+    def copy_data_from_s3_by_chunks_with_calc_sha(
+        self,
+        bucket,
+        object_name,
+        destination_path,
+        chunk_size=CHUNK_SIZE_128M,
+        process_chunk=lambda y, x: (y, x),
+    ):
+        """
+        Function will copy data from s3 to destination_path. For download is used get_object function which is dict which
+        contains in Body key StreamingBody -> loading by chunks.
+
+        :param object_name:
+        :param destination_path:
+        :param bucket:
+        :param chunk_size:
+        :return:
+        """
+        import hashlib
+        logger.info(
+            f'Copy data from S3 for: {object_name} from bucket: {bucket} to path: {destination_path}'
+        )
+        response = self.s3_client.get_object(Bucket=bucket, Key=object_name)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with open(destination_path, 'wb') as wf:
+                for idx, chunk in enumerate(response['Body'].iter_chunks(chunk_size)):
+                    if chunk is None or not any(chunk):
+                        break
+                    size += len(chunk)
+                    digest.update(chunk)
+                    process_chunk(idx, chunk)
+                    wf.write(chunk)
+
+            checksum_result = digest.hexdigest()
+            logger.info(f'Checksum result: {checksum_result}')
+            return checksum_result
+        except Exception as e:
+            print(e)
+            logger.error(
+                f'{self.name}-> Something goes wrong in copy from S3 response: {response}, '
+                f'destination = {destination_path}, '
+                f'object_name: {object_name}'
+                f'bucket: {bucket}'
+            )

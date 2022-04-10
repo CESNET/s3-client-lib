@@ -1,10 +1,5 @@
-import boto3
 import logging
-import hashlib
 import os
-import requests
-import time
-import concurrent.futures
 from s3_client_lib.s3_client import S3Client
 from s3_client_lib.utils import *
 import multiprocessing as mp
@@ -101,6 +96,7 @@ class S3MultipartClient(S3Client):
         res = self.client.create_multipart_upload(
             Bucket=bucket, Key=object_name, Expires=expires
         )
+
         return res['UploadId']
 
     def finish_multipart_upload(self, bucket, object_name, parts, upload_id):
@@ -141,7 +137,13 @@ class S3MultipartClient(S3Client):
         ]
 
     def upload_local_file_multipart(
-        self, local_file, bucket, object_name, chunk_size=MB_512, num_chunks=1, expires=3600
+        self,
+        local_file,
+        bucket,
+        object_name,
+        chunk_size=MB_512,
+        num_chunks=1,
+        expires=3600,
     ):
         """
         Upload file to s3 with multipart upload this method is for large files
@@ -192,3 +194,27 @@ class S3MultipartClient(S3Client):
         return self.client.abort_multipart_upload(
             Bucket=bucket, Key=object_name, UploadId=upload_id
         )
+
+    def sign_part_upload(self, bucket, key, upload_id, part_num, expires=36000):
+        """Get parameters for uploading one part of a multipart upload."""
+        return create_presigned_upload_part(
+            self.client, bucket, key, upload_id, part_num, expires
+        )
+
+    def get_uploaded_parts(self, bucket, key, upload_id):
+        """List parts that have been fully uploaded so far."""
+        parts = []
+
+        def _list_parts_page(start_at):
+            nonlocal parts
+            part_data = self.client.list_parts(
+                Bucket=bucket, Key=key, UploadId=upload_id, PartNumberMarker=start_at
+            )
+
+            parts += part_data.get('Parts', [])
+            if part_data['IsTruncated']:
+                _list_parts_page(part_data['NextPartNumberMarker'])
+            else:
+                return parts
+
+        return _list_parts_page(0)
