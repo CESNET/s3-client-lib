@@ -38,14 +38,26 @@ class S3Client:
             operation_name,
             **kwargs,
         ):
-            if tenant:
-                bucket = request.context['signing'].get('bucket', None)
-                logger.info(f' {tenant} => {bucket}')
-                if request.url:
-                    request.url = request.url.replace(bucket, f'{tenant}%3A{bucket}', 1)
-            else:
-                logger.info('TENANT IS NOT DEFINED => do nothing')
-
+            try:
+                logger.debug(f"BEFORE `{kwargs}`")
+                logger.debug(f"BEFORE `{request.context}`")
+                logger.info(f"BEFORE parsing bucket `{request.url}`")
+                if tenant and request is not None:
+                    bucket = None
+                    match = re.match(r"(https|http):\/\/.+?\/(.*?)\/.*", request.url)
+                    if match is not None:
+                        bucket = match.group(2)
+                    else:
+                        # no bucket!!
+                        logger.error(f"Cannot find bucket in url `{request}`, {kwargs}")
+                        return
+                    # bucket = request.context['signing'].get('bucket', kwargs.get('bucket', None))
+                    logger.info(f' {tenant} => {bucket}')
+                    request.url = request.url.replace(bucket, f'{tenant}%3A{bucket}')
+                else:
+                    logger.info('TENANT IS NOT DEFINED => do nothing')
+            except Exception as e:
+                logger.error(f'Error {e}')
         self.client.meta.events.register(
             'before-sign.s3.UploadPart', extend_bucket_with_tenant
         )
