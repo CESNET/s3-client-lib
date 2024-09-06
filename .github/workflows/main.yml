@@ -1,6 +1,6 @@
 name: s3-client-lib build,test,deploy
 
-on: [ push ]
+on: [ push, workflow_dispatch ]
 
 jobs:
   build:
@@ -9,13 +9,13 @@ jobs:
       matrix:
         python-version: [ 3.8 ]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Cache pip
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           # This path is specific to Ubuntu
           path: ~/.cache/pip
@@ -49,7 +49,7 @@ jobs:
           poetry build
 
       - name: Archive production artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist
@@ -59,7 +59,7 @@ jobs:
     needs: build
     steps:
       - name: Use built artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
